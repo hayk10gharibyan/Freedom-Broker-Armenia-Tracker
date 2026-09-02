@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FBA Portfolio Tracker</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --primary: #007bff;
+            --text-main: #333;
+            --text-muted: #6c757d;
+            --profit: #28a745;
+            --loss: #dc3545;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 { text-align: center; margin-bottom: 30px; }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85em;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+
+        button:hover { background-color: #0056b3; }
+
+        .portfolio-item {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .portfolio-item:last-child { border-bottom: none; }
+        
+        .item-header { font-weight: bold; font-size: 1.1em; grid-column: span 2;}
+        .metric { font-size: 0.9em; }
+        
+        .profit { color: var(--profit); font-weight: bold; }
+        .loss { color: var(--loss); font-weight: bold; }
+        
+        .delete-btn {
+            background-color: var(--loss);
+            margin-top: 10px;
+            grid-column: span 2;
+        }
+
+        /* Desktop specific tweaks */
+        @media (min-width: 600px) {
+            .portfolio-item {
+                grid-template-columns: repeat(4, 1fr) auto;
+                align-items: center;
+            }
+            .item-header, .delete-btn { grid-column: span 1; }
+            .delete-btn { margin-top: 0; width: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>FBA Portfolio Monitor</h1>
+
+    <div class="card">
+        <h3>Add New Position from Report</h3>
+        <div class="form-grid">
+            <div>
+                <label>Ticker (e.g. AAPL)</label>
+                <input type="text" id="ticker" placeholder="AAPL">
+            </div>
+            <div>
+                <label>Shares</label>
+                <input type="number" id="shares" step="any" placeholder="10">
+            </div>
+            <div>
+                <label>Buy Price ($)</label>
+                <input type="number" id="buyPrice" step="any" placeholder="150.00">
+            </div>
+            <div>
+                <label>Buy Fee ($ paid)</label>
+                <input type="number" id="buyFee" step="any" placeholder="1.20">
+            </div>
+            <div>
+                <label>Est. Sell Fee ($)</label>
+                <input type="number" id="sellFee" step="any" placeholder="1.20">
+            </div>
+        </div>
+        <button onclick="addPosition()">Add Position</button>
+    </div>
+
+    <div class="card" id="portfolioContainer">
+        <h3>Your Portfolio</h3>
+        <!-- JavaScript will inject stocks here -->
+    </div>
+</div>
+
+<script>
+    // Load portfolio from device storage
+    let portfolio = JSON.parse(localStorage.getItem('fba_portfolio')) || [];
+
+    function saveAndRender() {
+        localStorage.setItem('fba_portfolio', JSON.stringify(portfolio));
+        renderPortfolio();
+    }
+
+    function addPosition() {
+        const ticker = document.getElementById('ticker').value.toUpperCase();
+        const shares = parseFloat(document.getElementById('shares').value);
+        const buyPrice = parseFloat(document.getElementById('buyPrice').value);
+        const buyFee = parseFloat(document.getElementById('buyFee').value);
+        const sellFee = parseFloat(document.getElementById('sellFee').value);
+
+        if(!ticker || !shares || !buyPrice) {
+            alert("Please fill in Ticker, Shares, and Buy Price.");
+            return;
+        }
+
+        portfolio.push({
+            id: Date.now(),
+            ticker, shares, buyPrice, buyFee: buyFee || 0, sellFee: sellFee || 0,
+            currentPrice: buyPrice // Default current price to buy price initially
+        });
+
+        // Clear inputs
+        document.querySelectorAll('input').forEach(input => input.value = '');
+        saveAndRender();
+    }
+
+    function deletePosition(id) {
+        portfolio = portfolio.filter(p => p.id !== id);
+        saveAndRender();
+    }
+
+    function updateCurrentPrice(id, newPrice) {
+        const position = portfolio.find(p => p.id === id);
+        if (position) {
+            position.currentPrice = parseFloat(newPrice) || 0;
+            saveAndRender();
+        }
+    }
+
+    function renderPortfolio() {
+        const container = document.getElementById('portfolioContainer');
+        container.innerHTML = '<h3>Your Portfolio</h3>';
+
+        if(portfolio.length === 0) {
+            container.innerHTML += '<p style="color: gray;">No stocks added yet. Enter data from your FBA report above.</p>';
+            return;
+        }
+
+        portfolio.forEach(pos => {
+            // The Mathematical Core: Break-Even calculation
+            const totalInvested = (pos.shares * pos.buyPrice) + pos.buyFee;
+            // Break even = (Total Invested + Sell Commission) / Shares
+            const breakEvenPrice = (totalInvested + pos.sellFee) / pos.shares;
+            
+            // Profit calculation based on current estimated price
+            const grossValue = pos.shares * pos.currentPrice;
+            const netProfit = grossValue - totalInvested - pos.sellFee;
+            
+            const profitClass = netProfit >= 0 ? 'profit' : 'loss';
+            const profitSign = netProfit >= 0 ? '+' : '';
+
+            const div = document.createElement('div');
+            div.className = 'portfolio-item';
+            div.innerHTML = `
+                <div class="item-header">${pos.ticker} <br><span style="font-size:0.7em; font-weight:normal;">${pos.shares} shares</span></div>
+                <div class="metric">
+                    <label>Break-Even Price</label>
+                    <strong>$${breakEvenPrice.toFixed(2)}</strong>
+                </div>
+                <div class="metric">
+                    <label>Current Price ($)</label>
+                    <input type="number" step="any" value="${pos.currentPrice}" 
+                           onchange="updateCurrentPrice(${pos.id}, this.value)" 
+                           style="width: 80px; padding: 4px;">
+                </div>
+                <div class="metric">
+                    <label>Net P/L</label>
+                    <span class="${profitClass}">${profitSign}$${netProfit.toFixed(2)}</span>
+                </div>
+                <button class="delete-btn" onclick="deletePosition(${pos.id})">Remove</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // Initial render
+    renderPortfolio();
+</script>
+
+</body>
+</html>
