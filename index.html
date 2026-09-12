@@ -328,6 +328,16 @@
         });
     }
     renderPortfolio();
+
+
+// Automatically sync prices every 2 minutes (120,000 milliseconds)
+    setInterval(() => {
+        const apiKey = localStorage.getItem('finnhub_api_key');
+        if (apiKey && portfolio.length > 0) {
+            fetchLivePrices();
+        }
+    }, 120000);
+    
 </script>
 
 </body>
