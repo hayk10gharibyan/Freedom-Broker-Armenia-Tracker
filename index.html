@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FBA Portfolio Tracker</title>
-    <!-- PDF.js library to read PDFs entirely inside the browser -->
+    <!-- PDF.js library to parse PDFs strictly inside your browser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root {
@@ -41,7 +41,6 @@
             margin-bottom: 20px;
         }
 
-        /* Drag & Drop Upload Zone */
         .dropzone {
             border: 2px dashed #007bff;
             border-radius: 10px;
@@ -62,39 +61,24 @@
             color: var(--text-muted);
         }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 12px;
+        .portfolio-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 15px;
         }
 
-        label {
-            display: block;
-            font-size: 0.85em;
-            color: var(--text-muted);
-            margin-bottom: 5px;
-        }
-
-        input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-sizing: border-box;
-        }
-
-        button {
-            background-color: var(--primary);
+        .clear-btn {
+            background-color: #6c757d;
             color: white;
             border: none;
-            padding: 10px 18px;
+            padding: 6px 12px;
             border-radius: 5px;
             cursor: pointer;
-            font-weight: bold;
+            font-size: 0.85em;
         }
 
-        button:hover { background-color: #0056b3; }
+        .clear-btn:hover { background-color: #5a6268; }
 
         .portfolio-item {
             border-bottom: 1px solid #eee;
@@ -112,13 +96,26 @@
         
         .delete-btn {
             background-color: var(--loss);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 14px;
+            cursor: pointer;
             margin-top: 10px;
             grid-column: span 2;
         }
 
+        input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
         @media (min-width: 600px) {
             .portfolio-item {
-                grid-template-columns: repeat(4, 1fr) auto;
+                grid-template-columns: 1.5fr 1fr 1fr 1fr auto;
                 align-items: center;
             }
             .item-header, .delete-btn { grid-column: span 1; }
@@ -131,54 +128,29 @@
 <div class="container">
     <h1>FBA Portfolio Monitor</h1>
 
-    <!-- Drop Zone for PDF Report -->
+    <!-- Drop Zone -->
     <div class="card">
         <div class="dropzone" id="dropzone" onclick="document.getElementById('pdfInput').click()">
             <input type="file" id="pdfInput" accept="application/pdf" style="display: none;" onchange="handleFileSelect(this.files)">
             <h3 style="margin-top: 0; color: #007bff;">📄 Drop Freedom Broker PDF Report Here</h3>
-            <p>or tap to browse on your device</p>
-            <p id="statusMsg" style="font-size: 0.85em; font-weight: bold;"></p>
+            <p>or click to browse on your device</p>
+            <p id="statusMsg" style="font-size: 0.9em; font-weight: bold;"></p>
         </div>
     </div>
 
-    <!-- Manual Entry (as fallback) -->
+    <!-- Portfolio List -->
     <div class="card">
-        <details>
-            <summary style="cursor: pointer; font-weight: bold; color: #555;">Or Add Position Manually</summary>
-            <div class="form-grid" style="margin-top: 15px;">
-                <div>
-                    <label>Ticker</label>
-                    <input type="text" id="ticker" placeholder="e.g. AAPL">
-                </div>
-                <div>
-                    <label>Shares</label>
-                    <input type="number" id="shares" step="any" placeholder="10">
-                </div>
-                <div>
-                    <label>Buy Price ($)</label>
-                    <input type="number" id="buyPrice" step="any" placeholder="150.00">
-                </div>
-                <div>
-                    <label>Buy Fee ($)</label>
-                    <input type="number" id="buyFee" step="any" placeholder="1.20">
-                </div>
-                <div>
-                    <label>Est. Sell Fee ($)</label>
-                    <input type="number" id="sellFee" step="any" placeholder="1.20">
-                </div>
-            </div>
-            <button onclick="addManualPosition()">Add Manually</button>
-        </details>
-    </div>
-
-    <!-- Active Portfolio -->
-    <div class="card" id="portfolioContainer">
-        <h3>Your Portfolio</h3>
+        <div class="portfolio-header">
+            <h3 style="margin: 0;">Your Portfolio</h3>
+            <button class="clear-btn" onclick="clearAllData()">Clear All Positions</button>
+        </div>
+        <div id="portfolioContainer">
+            <!-- Positions rendered here -->
+        </div>
     </div>
 </div>
 
 <script>
-    // Configure PDF.js Worker
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     let portfolio = JSON.parse(localStorage.getItem('fba_portfolio')) || [];
@@ -188,25 +160,23 @@
         renderPortfolio();
     }
 
-    // --- Drag and Drop Listeners ---
+    function clearAllData() {
+        if (confirm("Are you sure you want to remove all saved positions?")) {
+            portfolio = [];
+            saveAndRender();
+        }
+    }
+
+    // Drag and Drop
     const dropzone = document.getElementById('dropzone');
-
-    dropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropzone.classList.add('dragover');
-    });
-
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
     dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            handleFileSelect(e.dataTransfer.files);
-        }
+        if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files);
     });
 
-    // --- PDF Processing Engine ---
     async function handleFileSelect(files) {
         const file = files[0];
         if (!file || file.type !== 'application/pdf') {
@@ -215,7 +185,7 @@
         }
 
         const status = document.getElementById('statusMsg');
-        status.textContent = 'Reading PDF...';
+        status.textContent = 'Reading Freedom Broker report...';
         status.style.color = '#007bff';
 
         try {
@@ -226,8 +196,9 @@
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
+                // Join tokens cleanly
                 const pageText = textContent.items.map(item => item.str).join(' ');
-                fullText += pageText + '\n';
+                fullText += ' ' + pageText;
             }
 
             parseReportText(fullText);
@@ -235,40 +206,46 @@
             status.style.color = 'green';
         } catch (error) {
             console.error(error);
-            status.textContent = 'Failed to parse PDF. Format might be customized.';
+            status.textContent = 'Error reading the PDF. Please try again.';
             status.style.color = 'red';
         }
     }
 
-    // --- Parser tailored to FBA table structures ---
-  // --- Parser tailored to FBA report_1794313.pdf structure ---
+    // --- Strict FBA Table Parser ---
     function parseReportText(text) {
-        let importedCount = 0;
+        // Clear out previous junk entries before importing fresh
+        portfolio = [];
 
-        // This regex specifically targets the FBA "Securities" table format:
-        // Ticker | ISIN | Account | Asset type | Beg Bal | End Bal | Price
-        const fbaPattern = /([A-Z0-9]+\.[A-Z]{2})\s*(?:\|\s*)?([A-Z0-9]{12})\s*(?:\|\s*)?(?:Trading|Non trading account.*?)\s*(?:\|\s*)?(?:Stocks|Depositary receipts|.*?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)/gi;
+        // STRICT PATTERN FOR FBA "Securities" TABLE:
+        // 1. Ticker with exchange: ([A-Z0-9]{1,6}\.[A-Z]{2}) -> e.g. INTC.US, EUROB.GR
+        // 2. ISIN code: ([A-Z]{2}[A-Z0-9]{9}\d) -> e.g. US4581401001
+        // 3. Non-numeric description (Account + Asset type)
+        // 4. Numbers: BegBal, EndingBal, Price, Currency, Valuation
+        const strictFbaRegex = /([A-Z0-9]{1,6}\.[A-Z]{2})\s+([A-Z]{2}[A-Z0-9]{9}\d)[^\d]+?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(USD|EUR|AMD)\s+(\d+(?:\.\d+)?)/g;
 
         let match;
-        // Reset regex index
-        fbaPattern.lastIndex = 0;
+        let importedCount = 0;
 
-        while ((match = fbaPattern.exec(text)) !== null) {
-            const rawTicker = match[1]; // e.g., BYDDY.US or EUROB.GR
-            const shares = parseFloat(match[4]); // Column: Ending balance
-            const reportPrice = parseFloat(match[5]); // Column: Price
+        while ((match = strictFbaRegex.exec(text)) !== null) {
+            const ticker = match[1];
+            const isin = match[2];
+            const endingBalance = parseFloat(match[4]);
+            const price = parseFloat(match[5]);
+            const currency = match[6];
+            const valuationUsd = parseFloat(match[7]);
 
-            if (shares > 0 && reportPrice > 0) {
+            if (endingBalance > 0) {
+                // Determine per-share price in USD
+                const priceInUsd = currency === 'USD' ? price : (valuationUsd / endingBalance);
+
                 portfolio.push({
                     id: Date.now() + Math.random(),
-                    ticker: rawTicker.replace('.US', ''), // Clean up US tickers
-                    shares: shares,
-                    // The report only shows current valuation, not actual purchase price
-                    buyPrice: reportPrice, 
-                    // Placeholders based on standard minimums; adjust as needed
-                    buyFee: 1.20, 
+                    ticker: ticker,
+                    shares: endingBalance,
+                    buyPrice: priceInUsd, 
+                    buyFee: 1.20,
                     sellFee: 1.20,
-                    currentPrice: reportPrice
+                    currentPrice: priceInUsd
                 });
                 importedCount++;
             }
@@ -276,37 +253,17 @@
 
         if (importedCount > 0) {
             saveAndRender();
-            // Alert the user about the missing buy prices
-            alert(`Successfully imported ${importedCount} positions from the FBA report!\n\nIMPORTANT: Because this report is a balance statement, it does not contain your original purchase prices. Please update the "Buy Price" manually to see accurate Profit/Loss calculations.`);
         } else {
-            alert("No trade lines could be automatically matched. Please ensure you are dropping the 'Securities' page of the report.");
+            alert("Could not detect any valid stocks in the Securities section. Please ensure this is the official FBA brokerage PDF.");
         }
     }
-    function addManualPosition() {
-        const ticker = document.getElementById('ticker').value.toUpperCase();
-        const shares = parseFloat(document.getElementById('shares').value);
-        const buyPrice = parseFloat(document.getElementById('buyPrice').value);
-        const buyFee = parseFloat(document.getElementById('buyFee').value) || 0;
-        const sellFee = parseFloat(document.getElementById('sellFee').value) || buyFee;
 
-        if (!ticker || !shares || !buyPrice) {
-            alert('Please fill in Ticker, Shares, and Buy Price.');
-            return;
+    function updateBuyPrice(id, newBuyPrice) {
+        const position = portfolio.find(p => p.id === id);
+        if (position) {
+            position.buyPrice = parseFloat(newBuyPrice) || 0;
+            saveAndRender();
         }
-
-        portfolio.push({
-            id: Date.now(),
-            ticker, shares, buyPrice, buyFee, sellFee,
-            currentPrice: buyPrice
-        });
-
-        document.querySelectorAll('.form-grid input').forEach(input => input.value = '');
-        saveAndRender();
-    }
-
-    function deletePosition(id) {
-        portfolio = portfolio.filter(p => p.id !== id);
-        saveAndRender();
     }
 
     function updateCurrentPrice(id, newPrice) {
@@ -317,12 +274,17 @@
         }
     }
 
+    function deletePosition(id) {
+        portfolio = portfolio.filter(p => p.id !== id);
+        saveAndRender();
+    }
+
     function renderPortfolio() {
         const container = document.getElementById('portfolioContainer');
-        container.innerHTML = '<h3>Your Portfolio</h3>';
+        container.innerHTML = '';
 
         if (portfolio.length === 0) {
-            container.innerHTML += '<p style="color: gray;">No positions yet. Drop your FBA report above to import.</p>';
+            container.innerHTML = '<p style="color: gray; text-align: center; padding: 20px;">No positions added yet. Drop your FBA PDF report above to load your holdings.</p>';
             return;
         }
 
@@ -339,16 +301,24 @@
             const div = document.createElement('div');
             div.className = 'portfolio-item';
             div.innerHTML = `
-                <div class="item-header">${pos.ticker} <br><span style="font-size:0.7em; font-weight:normal;">${pos.shares} shares @ $${pos.buyPrice.toFixed(2)}</span></div>
+                <div class="item-header">
+                    ${pos.ticker}
+                    <div style="font-size: 0.75em; color: var(--text-muted); font-weight: normal; margin-top: 4px;">
+                        ${pos.shares} share(s) | Buy: 
+                        <input type="number" step="any" value="${pos.buyPrice.toFixed(2)}" 
+                               onchange="updateBuyPrice(${pos.id}, this.value)" 
+                               style="width: 75px; padding: 2px 4px; display: inline-block;">
+                    </div>
+                </div>
                 <div class="metric">
-                    <label>Break-Even Price</label>
+                    <label>Break-Even</label>
                     <strong>$${breakEvenPrice.toFixed(2)}</strong>
                 </div>
                 <div class="metric">
-                    <label>Current Price ($)</label>
-                    <input type="number" step="any" value="${pos.currentPrice}" 
+                    <label>Current Price</label>
+                    <input type="number" step="any" value="${pos.currentPrice.toFixed(2)}" 
                            onchange="updateCurrentPrice(${pos.id}, this.value)" 
-                           style="width: 80px; padding: 4px;">
+                           style="width: 85px;">
                 </div>
                 <div class="metric">
                     <label>Net P/L</label>
