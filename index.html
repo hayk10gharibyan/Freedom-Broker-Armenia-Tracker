@@ -241,31 +241,34 @@
     }
 
     // --- Parser tailored to FBA table structures ---
+  // --- Parser tailored to FBA report_1794313.pdf structure ---
     function parseReportText(text) {
-        // Looks for common ticker patterns like AAPL, MSFT, or AAPL.US followed by numerical figures
-        const lines = text.split('\n');
         let importedCount = 0;
 
-        // General trade regex: matches TICKER (.US optional), Quantity, Price, and Commission
-        const tradePattern = /([A-Z]{1,5}(?:\.[A-Z]{2})?)\b.*?(\d+(?:\.\d+)?)\s*(?:USD|\$)?\s*(\d+(?:\.\d+)?)\s*(?:USD|\$)?\s*(\d+(?:\.\d+)?)/gi;
+        // This regex specifically targets the FBA "Securities" table format:
+        // Ticker | ISIN | Account | Asset type | Beg Bal | End Bal | Price
+        const fbaPattern = /([A-Z0-9]+\.[A-Z]{2})\s*(?:\|\s*)?([A-Z0-9]{12})\s*(?:\|\s*)?(?:Trading|Non trading account.*?)\s*(?:\|\s*)?(?:Stocks|Depositary receipts|.*?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)\s*(?:\|\s*)?(\d+(?:\.\d+)?)/gi;
 
         let match;
-        while ((match = tradePattern.exec(text)) !== null) {
-            const rawTicker = match[1].replace('.US', '');
-            const shares = parseFloat(match[2]);
-            const price = parseFloat(match[3]);
-            const fee = parseFloat(match[4]) || 1.20;
+        // Reset regex index
+        fbaPattern.lastIndex = 0;
 
-            // Avoid false positives on dates/headers
-            if (shares > 0 && price > 0 && isNaN(rawTicker)) {
+        while ((match = fbaPattern.exec(text)) !== null) {
+            const rawTicker = match[1]; // e.g., BYDDY.US or EUROB.GR
+            const shares = parseFloat(match[4]); // Column: Ending balance
+            const reportPrice = parseFloat(match[5]); // Column: Price
+
+            if (shares > 0 && reportPrice > 0) {
                 portfolio.push({
                     id: Date.now() + Math.random(),
-                    ticker: rawTicker,
+                    ticker: rawTicker.replace('.US', ''), // Clean up US tickers
                     shares: shares,
-                    buyPrice: price,
-                    buyFee: fee,
-                    sellFee: fee, // estimate sell fee equal to buy fee
-                    currentPrice: price
+                    // The report only shows current valuation, not actual purchase price
+                    buyPrice: reportPrice, 
+                    // Placeholders based on standard minimums; adjust as needed
+                    buyFee: 1.20, 
+                    sellFee: 1.20,
+                    currentPrice: reportPrice
                 });
                 importedCount++;
             }
@@ -273,11 +276,12 @@
 
         if (importedCount > 0) {
             saveAndRender();
+            // Alert the user about the missing buy prices
+            alert(`Successfully imported ${importedCount} positions from the FBA report!\n\nIMPORTANT: Because this report is a balance statement, it does not contain your original purchase prices. Please update the "Buy Price" manually to see accurate Profit/Loss calculations.`);
         } else {
-            alert("No trade lines could be automatically matched. You can inspect the text or add them manually.");
+            alert("No trade lines could be automatically matched. Please ensure you are dropping the 'Securities' page of the report.");
         }
     }
-
     function addManualPosition() {
         const ticker = document.getElementById('ticker').value.toUpperCase();
         const shares = parseFloat(document.getElementById('shares').value);
