@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FBA Portfolio Tracker</title>
-    <!-- PDF.js library to parse PDFs strictly inside your browser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root {
             --bg-color: #f4f7f6;
             --card-bg: #ffffff;
             --primary: #007bff;
+            --success: #28a745;
             --text-main: #333;
             --text-muted: #6c757d;
             --profit: #28a745;
@@ -18,19 +18,14 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             margin: 0;
             padding: 20px;
-            box-sizing: border-box;
         }
 
-        .container {
-            max-width: 850px;
-            margin: 0 auto;
-        }
-
+        .container { max-width: 850px; margin: 0 auto; }
         h1 { text-align: center; margin-bottom: 25px; }
 
         .card {
@@ -41,6 +36,18 @@
             margin-bottom: 20px;
         }
 
+        .api-settings {
+            background: #eef5ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .api-settings input { flex-grow: 1; }
+
         .dropzone {
             border: 2px dashed #007bff;
             border-radius: 10px;
@@ -48,17 +55,6 @@
             text-align: center;
             background: #f8fbff;
             cursor: pointer;
-            transition: 0.2s ease;
-        }
-
-        .dropzone.dragover {
-            background: #e1f0ff;
-            border-color: #0056b3;
-        }
-
-        .dropzone p {
-            margin: 8px 0;
-            color: var(--text-muted);
         }
 
         .portfolio-header {
@@ -68,17 +64,18 @@
             margin-bottom: 15px;
         }
 
-        .clear-btn {
-            background-color: #6c757d;
-            color: white;
+        button {
             border: none;
-            padding: 6px 12px;
+            padding: 8px 14px;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 0.85em;
+            font-weight: bold;
+            color: white;
         }
 
-        .clear-btn:hover { background-color: #5a6268; }
+        .btn-sync { background-color: var(--success); }
+        .btn-clear { background-color: var(--text-muted); }
+        .delete-btn { background-color: var(--loss); margin-top: 10px; grid-column: span 2; }
 
         .portfolio-item {
             border-bottom: 1px solid #eee;
@@ -90,27 +87,13 @@
 
         .portfolio-item:last-child { border-bottom: none; }
         .item-header { font-weight: bold; font-size: 1.1em; grid-column: span 2; }
-        .metric { font-size: 0.9em; }
         .profit { color: var(--profit); font-weight: bold; }
         .loss { color: var(--loss); font-weight: bold; }
-        
-        .delete-btn {
-            background-color: var(--loss);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 8px 14px;
-            cursor: pointer;
-            margin-top: 10px;
-            grid-column: span 2;
-        }
 
         input {
-            width: 100%;
             padding: 6px 8px;
             border: 1px solid #ccc;
             border-radius: 5px;
-            box-sizing: border-box;
         }
 
         @media (min-width: 600px) {
@@ -128,12 +111,17 @@
 <div class="container">
     <h1>FBA Portfolio Monitor</h1>
 
+    <!-- API Key Storage -->
+    <div class="api-settings">
+        <label><strong>Finnhub API Key:</strong></label>
+        <input type="password" id="apiKeyInput" placeholder="Paste your free key here..." onchange="saveApiKey(this.value)">
+    </div>
+
     <!-- Drop Zone -->
     <div class="card">
         <div class="dropzone" id="dropzone" onclick="document.getElementById('pdfInput').click()">
             <input type="file" id="pdfInput" accept="application/pdf" style="display: none;" onchange="handleFileSelect(this.files)">
-            <h3 style="margin-top: 0; color: #007bff;">📄 Drop Freedom Broker PDF Report Here</h3>
-            <p>or click to browse on your device</p>
+            <h3 style="margin-top: 0; color: #007bff;">📄 Drop Freedom Broker PDF Here</h3>
             <p id="statusMsg" style="font-size: 0.9em; font-weight: bold;"></p>
         </div>
     </div>
@@ -141,12 +129,10 @@
     <!-- Portfolio List -->
     <div class="card">
         <div class="portfolio-header">
-            <h3 style="margin: 0;">Your Portfolio</h3>
-            <button class="clear-btn" onclick="clearAllData()">Clear All Positions</button>
+            <button class="btn-sync" id="refreshBtn" onclick="fetchLivePrices()">🔄 Sync Live Prices</button>
+            <button class="btn-clear" onclick="clearAllData()">Clear All Positions</button>
         </div>
-        <div id="portfolioContainer">
-            <!-- Positions rendered here -->
-        </div>
+        <div id="portfolioContainer"></div>
     </div>
 </div>
 
@@ -154,6 +140,13 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     let portfolio = JSON.parse(localStorage.getItem('fba_portfolio')) || [];
+    
+    // Load API Key from device storage
+    document.getElementById('apiKeyInput').value = localStorage.getItem('finnhub_api_key') || '';
+
+    function saveApiKey(key) {
+        localStorage.setItem('finnhub_api_key', key.trim());
+    }
 
     function saveAndRender() {
         localStorage.setItem('fba_portfolio', JSON.stringify(portfolio));
@@ -167,26 +160,62 @@
         }
     }
 
-    // Drag and Drop
+    // --- Live Price Fetching Engine ---
+    async function fetchLivePrices() {
+        const apiKey = localStorage.getItem('finnhub_api_key');
+        if (!apiKey) {
+            alert("Please paste your free Finnhub API key in the top box first.");
+            return;
+        }
+
+        const btn = document.getElementById('refreshBtn');
+        btn.textContent = 'Syncing...';
+        btn.disabled = true;
+
+        for (let i = 0; i < portfolio.length; i++) {
+            let pos = portfolio[i];
+            
+            // Translate Freedom Broker tickers into global API formats
+            let fetchSymbol = pos.ticker;
+            if (fetchSymbol.endsWith('.EU')) fetchSymbol = fetchSymbol.replace('.EU', '.DE'); // XETRA
+            if (fetchSymbol.endsWith('.GR')) fetchSymbol = fetchSymbol.replace('.GR', '.AT'); // Athens Exchange
+            if (fetchSymbol.endsWith('.US')) fetchSymbol = fetchSymbol.replace('.US', '');    // US standard
+            
+            try {
+                const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${fetchSymbol}&token=${apiKey}`);
+                const data = await response.json();
+                
+                // Update if the API returns a valid current price ('c')
+                if (data && data.c && data.c > 0) {
+                    pos.currentPrice = data.c;
+                }
+            } catch (error) {
+                console.error("Failed to fetch: " + fetchSymbol, error);
+            }
+            
+            // Brief pause between requests to respect the free 60/min API speed limit
+            await new Promise(r => setTimeout(r, 250));
+        }
+
+        saveAndRender();
+        btn.textContent = '🔄 Sync Live Prices';
+        btn.disabled = false;
+    }
+
+    // --- PDF Parsing Engine ---
     const dropzone = document.getElementById('dropzone');
-    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
-    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); });
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropzone.classList.remove('dragover');
         if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files);
     });
 
     async function handleFileSelect(files) {
         const file = files[0];
-        if (!file || file.type !== 'application/pdf') {
-            alert('Please select a valid PDF file.');
-            return;
-        }
+        if (!file || file.type !== 'application/pdf') return;
 
         const status = document.getElementById('statusMsg');
         status.textContent = 'Reading Freedom Broker report...';
-        status.style.color = '#007bff';
 
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -196,48 +225,30 @@
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
-                // Join tokens cleanly
-                const pageText = textContent.items.map(item => item.str).join(' ');
-                fullText += ' ' + pageText;
+                fullText += ' ' + textContent.items.map(item => item.str).join(' ');
             }
 
             parseReportText(fullText);
-            status.textContent = 'Report imported successfully!';
-            status.style.color = 'green';
+            status.textContent = 'Imported successfully!';
         } catch (error) {
-            console.error(error);
-            status.textContent = 'Error reading the PDF. Please try again.';
-            status.style.color = 'red';
+            status.textContent = 'Error reading the PDF.';
         }
     }
 
-    // --- Strict FBA Table Parser ---
     function parseReportText(text) {
-        // Clear out previous junk entries before importing fresh
         portfolio = [];
-
-        // STRICT PATTERN FOR FBA "Securities" TABLE:
-        // 1. Ticker with exchange: ([A-Z0-9]{1,6}\.[A-Z]{2}) -> e.g. INTC.US, EUROB.GR
-        // 2. ISIN code: ([A-Z]{2}[A-Z0-9]{9}\d) -> e.g. US4581401001
-        // 3. Non-numeric description (Account + Asset type)
-        // 4. Numbers: BegBal, EndingBal, Price, Currency, Valuation
         const strictFbaRegex = /([A-Z0-9]{1,6}\.[A-Z]{2})\s+([A-Z]{2}[A-Z0-9]{9}\d)[^\d]+?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(USD|EUR|AMD)\s+(\d+(?:\.\d+)?)/g;
-
         let match;
-        let importedCount = 0;
-
+        
         while ((match = strictFbaRegex.exec(text)) !== null) {
             const ticker = match[1];
-            const isin = match[2];
             const endingBalance = parseFloat(match[4]);
             const price = parseFloat(match[5]);
             const currency = match[6];
             const valuationUsd = parseFloat(match[7]);
 
             if (endingBalance > 0) {
-                // Determine per-share price in USD
                 const priceInUsd = currency === 'USD' ? price : (valuationUsd / endingBalance);
-
                 portfolio.push({
                     id: Date.now() + Math.random(),
                     ticker: ticker,
@@ -247,31 +258,19 @@
                     sellFee: 1.20,
                     currentPrice: priceInUsd
                 });
-                importedCount++;
             }
         }
-
-        if (importedCount > 0) {
-            saveAndRender();
-        } else {
-            alert("Could not detect any valid stocks in the Securities section. Please ensure this is the official FBA brokerage PDF.");
-        }
+        saveAndRender();
     }
 
-    function updateBuyPrice(id, newBuyPrice) {
+    function updateBuyPrice(id, newPrice) {
         const position = portfolio.find(p => p.id === id);
-        if (position) {
-            position.buyPrice = parseFloat(newBuyPrice) || 0;
-            saveAndRender();
-        }
+        if (position) { position.buyPrice = parseFloat(newPrice) || 0; saveAndRender(); }
     }
 
     function updateCurrentPrice(id, newPrice) {
         const position = portfolio.find(p => p.id === id);
-        if (position) {
-            position.currentPrice = parseFloat(newPrice) || 0;
-            saveAndRender();
-        }
+        if (position) { position.currentPrice = parseFloat(newPrice) || 0; saveAndRender(); }
     }
 
     function deletePosition(id) {
@@ -284,14 +283,13 @@
         container.innerHTML = '';
 
         if (portfolio.length === 0) {
-            container.innerHTML = '<p style="color: gray; text-align: center; padding: 20px;">No positions added yet. Drop your FBA PDF report above to load your holdings.</p>';
+            container.innerHTML = '<p style="color: gray; text-align: center;">No positions added. Drop PDF above.</p>';
             return;
         }
 
         portfolio.forEach(pos => {
             const totalInvested = (pos.shares * pos.buyPrice) + pos.buyFee;
             const breakEvenPrice = (totalInvested + pos.sellFee) / pos.shares;
-            
             const grossValue = pos.shares * pos.currentPrice;
             const netProfit = grossValue - totalInvested - pos.sellFee;
             
@@ -307,7 +305,7 @@
                         ${pos.shares} share(s) | Buy: 
                         <input type="number" step="any" value="${pos.buyPrice.toFixed(2)}" 
                                onchange="updateBuyPrice(${pos.id}, this.value)" 
-                               style="width: 75px; padding: 2px 4px; display: inline-block;">
+                               style="width: 75px; padding: 2px; display: inline-block;">
                     </div>
                 </div>
                 <div class="metric">
@@ -329,7 +327,6 @@
             container.appendChild(div);
         });
     }
-
     renderPortfolio();
 </script>
 
